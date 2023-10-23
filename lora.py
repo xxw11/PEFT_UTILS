@@ -4,14 +4,21 @@ import torch.nn.functional as F
 import random
 
 class LoRALinear(torch.nn.Linear):
-    def __init__(self, in_features, out_features,rank,lora_alpha=32,lora_dropout=0.01):
+    def __init__(self, in_features, out_features,rank=4,lora_alpha=32,lora_dropout=0.1):
         super(LoRALinear, self).__init__(in_features=in_features, out_features=out_features)
         self.alpha = lora_alpha
         self.r = rank
         self.scaling = self.alpha / self.r
         self.lora_B, self.lora_A = nn.Parameter(torch.zeros(out_features, rank)), nn.Parameter(torch.zeros(rank, in_features))
         self.dropout = nn.Dropout(p=lora_dropout)
-
+        self.reset_parameters()
+        
+    def reset_parameters(self):
+        # nn.Embedding.reset_parameters(self)
+        if hasattr(self, 'lora_A'):
+            # initialize A the same way as the default for nn.Linear and B to zero
+            nn.init.zeros_(self.lora_A)
+            nn.init.normal_(self.lora_B)
 
     def forward(self, input):
         result = F.linear(input, self.weight, self.bias)
@@ -19,24 +26,24 @@ class LoRALinear(torch.nn.Linear):
         return result
         
     @staticmethod
-    def from_linear(linear_module,rank):
-        new_linear = LoRALinear(linear_module.in_features, linear_module.out_features,rank)
+    def from_linear(linear_module,rank=4,lora_alpha=32,lora_dropout=0.01):
+        new_linear = LoRALinear(linear_module.in_features, linear_module.out_features,rank=rank,lora_alpha=lora_alpha,lora_dropout=lora_dropout)
         new_linear.weight = linear_module.weight
         new_linear.bias = linear_module.bias
         return new_linear
 
 class LoRAModuleInjection:
     @staticmethod
-    def make_scalable(module,rank):
+    def make_scalable(module,rank=4,lora_alpha=32,lora_dropout=0.1):
         """Make a LoRA module
         """
         if isinstance(module, nn.Linear):
-            new_linear = LoRALinear.from_linear(module,rank)
+            new_linear = LoRALinear.from_linear(module,rank=rank,lora_alpha=lora_alpha,lora_dropout=lora_dropout)
             return new_linear
         elif isinstance(module, nn.Linear):
             pass
         
-def set_lora(model):
+def set_lora(model,rank=4,lora_alpha=32,lora_dropout=0.01):
     layers = []
     for name, l in model.named_modules():
         if isinstance(l, nn.Linear):
@@ -50,7 +57,7 @@ def set_lora(model):
             layers.append([layer, tokens[-1]])
     for parent_layer, last_token in layers:
         if not 'head' in last_token:
-            setattr(parent_layer, last_token, LoRAModuleInjection.make_scalable(getattr(parent_layer, last_token)))
+            setattr(parent_layer, last_token, LoRAModuleInjection.make_scalable(getattr(parent_layer, last_token),rank=rank,lora_alpha=lora_alpha,lora_dropout=lora_dropout))
 
 @torch.no_grad()
 def save_lora(save_path, model):
