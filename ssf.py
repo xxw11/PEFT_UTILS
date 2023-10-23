@@ -7,8 +7,8 @@ class SSFLinear(torch.nn.Linear):
     def __init__(self, in_features, out_features):
         super(SSFLinear, self).__init__(in_features=in_features, out_features=out_features)
         self.SSFscale, self.SSFshift = nn.Parameter(torch.ones(1,in_features)),nn.Parameter(torch.zeros(1,in_features))
-        # nn.init.normal_(self.SSFscale, mean=1, std=.02)
-        # nn.init.normal_(self.SSFshift, mean=0, std=.02)
+        nn.init.normal_(self.SSFscale, mean=1, std=.02)
+        nn.init.normal_(self.SSFshift, mean=0, std=.02)
 
     def forward(self, input):
         return F.linear(input*self.SSFscale + self.SSFshift, self.weight, self.bias)

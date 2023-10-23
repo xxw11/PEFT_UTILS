@@ -120,6 +120,7 @@ class RepAdapter(nn.Module):
 
 def set_repadapter(model):
     layers = []
+    set_param = 0
     for name, l in model.named_modules():
         if isinstance(l, nn.Linear):
             tokens = name.strip().split('.')
@@ -133,6 +134,9 @@ def set_repadapter(model):
     for parent_layer, last_token in layers:
         if not 'head' in last_token:
             setattr(parent_layer, last_token, RepadpterModuleInjection.make_scalable(getattr(parent_layer, last_token)))
+            set_param +=1
+    print(f'successfully set {set_param} layers params')
+
 
 @torch.no_grad()
 def save_repadapter(save_path, model):
@@ -154,17 +158,51 @@ def load_repadapter(load_path, model):
     print(f'successfully loaded {loaded} trained parameter tensors')
     return model
 
+def merge_repadapter(model,load_path):
+    set_repadapter(model)
+    load_repadapter(load_path,model)
+    # input=torch.randint(1,5,(1,1))
+    # output1=model(input)
+    reparam_num=0
+    for name, l in model.named_modules():
+        if isinstance(l, torch.nn.Linear):
+            tokens = name.strip().split('.')
+            layer = model
+            for t in tokens[:-1]:
+                if not t.isnumeric():
+                    layer = getattr(layer, t)
+                else:
+                    layer = layer[int(t)]
+            parent_layer = layer
+            repadapter_layer =  getattr(parent_layer, tokens[-1]) 
+            if hasattr(repadapter_layer,"adapter"):
+                last_token = tokens[-1]
+                setattr(parent_layer, last_token,  RepAdapterLinear.to_linear(repadapter_layer))
+                reparam_num = reparam_num + 1
+    print(f'successfully reparam {reparam_num} layers')
+    # output2 = model(input)
+    # print(output1)
+    # print(output2)
 
 if __name__ == '__main__':
-    input_tensor = torch.randn(1, 1, 20)
-    repadpter_linear = RepAdapterLinear(20, 10)
-    nn.init.normal_(repadpter_linear.adapter.conv_A.weight)
-    nn.init.normal_(repadpter_linear.adapter.conv_B.weight)
-    repadpter_linear.eval()
-    output_repadpter1 = repadpter_linear(input_tensor)
-    print("RepAdapterLinear 输出结果1:", output_repadpter1)
-    linear_module = RepAdapterLinear.to_linear(repadpter_linear)
-    output_repadpter2 = repadpter_linear(input_tensor)
-    print("RepAdapterLinear 输出结果2:", output_repadpter2)
-    output_linear = linear_module(input_tensor)
-    print("Linear            输出结果:", output_linear)
+    import transformers
+    input_tensor = torch.randint(1, 10, (1,20))
+    # repadpter_linear = RepAdapterLinear(20, 10)
+    # nn.init.normal_(repadpter_linear.adapter.conv_A.weight)
+    # nn.init.normal_(repadpter_linear.adapter.conv_B.weight)
+    # repadpter_linear.eval()
+    # output_repadpter1 = repadpter_linear(input_tensor)
+    # print("RepAdapterLinear 输出结果1:", output_repadpter1)
+    # linear_module = RepAdapterLinear.to_linear(repadpter_linear)
+    # output_repadpter2 = repadpter_linear(input_tensor)
+    # print("RepAdapterLinear 输出结果2:", output_repadpter2)
+    # output_linear = linear_module(input_tensor)
+    # print("Linear            输出结果:", output_linear)
+    model_name_or_path = "/mnt/SFT_store/Linksoul-llama2-7b"
+    model = transformers.AutoModelForCausalLM.from_pretrained(
+        model_name_or_path,)
+    model(input_tensor)
+    # print([name for name, l in model.named_modules()])
+    load_path = "/mnt/SFT_store/flageval_peft/outputs/repadapter/2023-10-19_02-45-41_success/final.pt"
+    merge_repadapter(model,load_path)
+    # print([name for name, l in model.named_modules()])
