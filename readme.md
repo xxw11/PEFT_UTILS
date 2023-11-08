@@ -5,8 +5,10 @@ PEFT_UTILS 是Parameter-Efficient Fine-Tuning (PEFT) 方法的一个工具库。
 ## 使用示例
 
 以下是一个使用repadapter加载和训练模型的简单示例：
+
+
 0. **导入模块**
-    可以从repadapter.py，或peft_utils包中导入需要的模块，例如:
+    可以从repadapter.py，或peft_utils包中导入需要的模块。
 
 
 1. **插入PEFT层**
