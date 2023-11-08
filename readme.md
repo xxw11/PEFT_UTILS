@@ -1,4 +1,4 @@
-# PEFT_UTIL
+# PEFT_UTILS
 
 PEFT_UTILS 是Parameter-Efficient Fine-Tuning (PEFT) 方法的一个工具库。目前收集了LoRA、GLoRA、SSF 和 RepAdapter等PEFT方法。
 
