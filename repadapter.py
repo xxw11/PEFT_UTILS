@@ -84,7 +84,50 @@ class RepadpterReparam:
         new_linear = RepAdapterLinear.to_linear(repadapter_module)
         return new_linear
     
-    
+class RepAdapter_plus(nn.Module):
+    """
+    Pytorch Implemention of RepAdapter for 1d tensor
+    copy from https://github.com/luogen1996/RepAdapter/blob/main/repadapter.py
+    """
+
+    def __init__(
+            self,
+            in_features=768,
+            hidden_dim=8,
+            groups=2,
+            scale=1,
+            temperature=5.
+    ):
+        super().__init__()
+        self.conv_A = nn.Conv1d(in_features,hidden_dim,1,groups=1,bias=True)
+        self.conv_B = nn.Conv1d(hidden_dim, in_features, 1, groups=groups, bias=True)
+        self.conv_C = nn.Conv1d(hidden_dim, in_features, 1, groups=groups, bias=True)
+
+        self.routing_weights=nn.Parameter(torch.rand(2))
+
+        self.dropout=nn.Dropout(0.1)
+        self.groups=groups
+        self.temperature=temperature
+        self.scale_B=scale
+        # adaption with different scales
+        self.scale_C=float(scale)/2.
+
+
+        nn.init.xavier_uniform_(self.conv_A.weight)
+        nn.init.zeros_(self.conv_A.bias)
+        nn.init.zeros_(self.conv_B.weight)
+        nn.init.zeros_(self.conv_B.bias)
+        nn.init.zeros_(self.conv_C.weight)
+        nn.init.zeros_(self.conv_C.bias)
+
+    def forward(self, x):
+        weights=torch.softmax(self.routing_weights/self.temperature,-1)
+        x=x.transpose(1,2)
+        x_=self.conv_A(x)
+        x=self.conv_B(self.dropout(x_))*self.scale_B*weights[0]+self.conv_C(self.dropout(x_))*self.scale_C*weights[1]+x
+        x=x.transpose(1,2).contiguous()
+        return x
+
 class RepAdapter(nn.Module):
     """
     Pytorch Implemention of RepAdapter for 1d tensor
@@ -158,11 +201,11 @@ def load_repadapter(load_path, model):
     print(f'successfully loaded {loaded} trained parameter tensors')
     return model
 
-def merge_repadapter(model,load_path):
-    set_repadapter(model)
-    load_repadapter(load_path,model)
-    # input=torch.randint(1,5,(1,1))
-    # output1=model(input)
+def merge_repadapter(model,load_path=None,has_loaded=False):
+    # 仅当还没有加载状态且提供了加载路径时，才执行加载操作
+    if not has_loaded and load_path is not None:
+        set_repadapter(model)
+        load_repadapter(load_path,model)
     reparam_num=0
     for name, l in model.named_modules():
         if isinstance(l, torch.nn.Linear):
@@ -180,9 +223,7 @@ def merge_repadapter(model,load_path):
                 setattr(parent_layer, last_token,  RepAdapterLinear.to_linear(repadapter_layer))
                 reparam_num = reparam_num + 1
     print(f'successfully reparam {reparam_num} layers')
-    # output2 = model(input)
-    # print(output1)
-    # print(output2)
+
 
 if __name__ == '__main__':
     import transformers
@@ -203,6 +244,6 @@ if __name__ == '__main__':
         model_name_or_path,)
     model(input_tensor)
     # print([name for name, l in model.named_modules()])
-    load_path = "/mnt/SFT_store/flageval_peft/outputs/repadapter/2023-10-19_02-45-41_success/final.pt"
-    merge_repadapter(model,load_path)
+    # load_path = "/mnt/SFT_store/flageval_peft/outputs/repadapter/2023-10-19_02-45-41_success/final.pt"
+    # merge_repadapter(model,load_path)
     # print([name for name, l in model.named_modules()])
